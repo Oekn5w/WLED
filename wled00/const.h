@@ -6,7 +6,16 @@
  * Readability defines and their associated numerical values + compile-time constants
  */
 
-#define GRADIENT_PALETTE_COUNT 59
+constexpr size_t FASTLED_PALETTE_COUNT = 7;   //  6-12 = sizeof(fastledPalettes) / sizeof(fastledPalettes[0]);
+constexpr size_t GRADIENT_PALETTE_COUNT = 59; // 13-72 = sizeof(gGradientPalettes) / sizeof(gGradientPalettes[0]);
+constexpr size_t DYNAMIC_PALETTE_COUNT = 6;   //  0- 5 = dynamic palettes (0=default(virtual),1=random,2=primary,3=primary+secondary,4=primary+secondary+tertiary,5=primary+secondary(+tertiary if not black)
+constexpr size_t FIXED_PALETTE_COUNT = DYNAMIC_PALETTE_COUNT + FASTLED_PALETTE_COUNT + GRADIENT_PALETTE_COUNT; // total number of fixed palettes
+#ifndef ESP8266
+  #define WLED_MAX_CUSTOM_PALETTES (255 - FIXED_PALETTE_COUNT) // allow up to 255 total palettes, user is warned about stability issues when adding more than 10
+#else
+  #define WLED_MAX_CUSTOM_PALETTES 10 // ESP8266: limit custom palettes to 10
+#endif
+#define WLED_MAX_CUSTOM_PALETTE_GAP 20 // max number of empty palette files in a row before stopping to look for more (20 takes 100ms)
 
 // You can define custom product info from build flags.
 // This is useful to allow API consumer to identify what type of WLED version
@@ -94,9 +103,9 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 
 #ifndef WLED_MAX_BUTTONS
   #ifdef ESP8266
-    #define WLED_MAX_BUTTONS 2
+    #define WLED_MAX_BUTTONS 10
   #else
-    #define WLED_MAX_BUTTONS 4
+    #define WLED_MAX_BUTTONS 32
   #endif
 #else
   #if WLED_MAX_BUTTONS < 2
@@ -104,6 +113,8 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
     #define WLED_MAX_BUTTONS 2
   #endif
 #endif
+
+#define RELAY_DELAY 50 // delay in ms between switching on relay and sending data to LEDs
 
 #if defined(ESP8266) || defined(CONFIG_IDF_TARGET_ESP32S2)
 #define WLED_MAX_COLOR_ORDER_MAPPINGS 5
@@ -200,6 +211,12 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define USERMOD_ID_BRIGHTNESS_FOLLOW_SUN 57     //Usermod "usermod_v2_brightness_follow_sun.h"
 #define USERMOD_ID_USER_FX               58     //Usermod "user_fx"
 #define USERMOD_ID_INA2XX                59     // Usermod "INA2XX_v2.h"
+
+//Wifi encryption type
+#ifdef WLED_ENABLE_WPA_ENTERPRISE
+  #define WIFI_ENCRYPTION_TYPE_PSK          0     //None/WPA/WPA2
+  #define WIFI_ENCRYPTION_TYPE_ENTERPRISE   1     //WPA/WPA2-Enterprise
+#endif
 
 //Access point behavior
 #define AP_BEHAVIOR_BOOT_NO_CONN          0     //Open AP when no connection after boot
@@ -317,6 +334,12 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define TYPE_P9813               53
 #define TYPE_LPD6803             54
 #define TYPE_2PIN_MAX            63
+
+#define TYPE_HUB75MATRIX_MIN     64
+#define TYPE_HUB75MATRIX_HS      65
+#define TYPE_HUB75MATRIX_QS      66
+#define TYPE_HUB75MATRIX_MAX     71
+
 //Network types (master broadcast) (80-95)
 #define TYPE_VIRTUAL_MIN         80
 #define TYPE_NET_DDP_RGB         80            //network DDP RGB bus (master broadcast bus)
@@ -353,7 +376,8 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define BTN_TYPE_TOUCH_SWITCH     9
 
 //Ethernet board types
-#define WLED_NUM_ETH_TYPES        13
+#define WLED_NUM_ETH_TYPES        14
+
 
 #define WLED_ETH_NONE              0
 #define WLED_ETH_WT32_ETH01        1
@@ -368,6 +392,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define WLED_ETH_SERG74           10
 #define WLED_ETH_ESP32_POE_WROVER 11
 #define WLED_ETH_LILYGO_T_POE_PRO 12
+#define WLED_ETH_GLEDOPTO         13
 
 //Hue error codes
 #define HUE_ERROR_INACTIVE        0
@@ -425,6 +450,31 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define ERR_OVERTEMP    30  // An attached temperature sensor has measured above threshold temperature (not implemented)
 #define ERR_OVERCURRENT 31  // An attached current sensor has measured a current above the threshold (not implemented)
 #define ERR_UNDERVOLT   32  // An attached voltmeter has measured a voltage below the threshold (not implemented)
+
+// JSON buffer lock owners
+#define JSON_LOCK_UNKNOWN        255
+#define JSON_LOCK_CFG_DES          1
+#define JSON_LOCK_CFG_SER          2
+#define JSON_LOCK_CFG_SEC_DES      3
+#define JSON_LOCK_CFG_SEC_SER      4
+#define JSON_LOCK_SETTINGS         5
+#define JSON_LOCK_XML              6
+#define JSON_LOCK_LEDMAP           7
+// unused                          8
+#define JSON_LOCK_PRESET_LOAD      9
+#define JSON_LOCK_PRESET_SAVE     10
+#define JSON_LOCK_WS_RECEIVE      11
+#define JSON_LOCK_WS_SEND         12
+#define JSON_LOCK_IR              13
+#define JSON_LOCK_SERVER          14
+#define JSON_LOCK_MQTT            15
+#define JSON_LOCK_SERIAL          16
+#define JSON_LOCK_SERVEJSON       17
+#define JSON_LOCK_NOTIFY          18
+#define JSON_LOCK_PRESET_NAME     19
+#define JSON_LOCK_LEDGAP          20
+#define JSON_LOCK_LEDMAP_ENUM     21
+#define JSON_LOCK_REMOTE          22
 
 // Timer mode types
 #define NL_MODE_SET               0            //After nightlight time elapsed, set to target brightness
@@ -547,8 +597,21 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
   #endif
 #endif
 
-// minimum heap size required to process web requests
-#define MIN_HEAP_SIZE 8192
+// minimum heap size required to process web requests: try to keep free heap above this value
+#ifdef ESP8266
+  #define MIN_HEAP_SIZE (9*1024)
+#else
+  #define MIN_HEAP_SIZE (15*1024) // WLED allocation functions (util.cpp) try to keep this much contiguous heap free for other tasks
+#endif
+// threshold for PSRAM use: if heap is running low, requests to allocate_buffer(prefer DRAM) above PSRAM_THRESHOLD may be put in PSRAM
+// if heap is depleted, PSRAM will be used regardless of threshold
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  #define PSRAM_THRESHOLD (12*1024) // S3 has plenty of DRAM
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+  #define PSRAM_THRESHOLD (5*1024)
+#else
+  #define PSRAM_THRESHOLD (2*1024) // S2 does not have a lot of RAM. C3 and ESP8266 do not support PSRAM: the value is not used
+#endif
 
 // Web server limits
 #ifdef ESP8266
@@ -583,7 +646,12 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
     #define DEFAULT_LED_PIN 2    // GPIO2 (D4) on Wemos D1 mini compatible boards, safe to use on any board
   #endif
 #else
-  #define DEFAULT_LED_PIN 16   // aligns with GPIO2 (D4) on Wemos D1 mini32 compatible boards (if it is unusable it will be reassigned in WS2812FX::finalizeInit())
+  #if defined(WLED_USE_ETHERNET)
+    #define DEFAULT_LED_PIN 4    // GPIO4 seems to be a "safe bet" for all known ethernet boards (issue #5155)
+    //#warning "Compiling with Ethernet support. The default LED pin has been changed to pin 4."
+  #else
+    #define DEFAULT_LED_PIN 16   // aligns with GPIO2 (D4) on Wemos D1 mini32 compatible boards (if it is unusable it will be reassigned in WS2812FX::finalizeInit())
+  #endif
 #endif
 #define DEFAULT_LED_TYPE TYPE_WS2812_RGB
 #define DEFAULT_LED_COUNT 30
@@ -655,5 +723,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #else
   #define IRAM_ATTR_YN IRAM_ATTR
 #endif
+
+#define WLED_O2_ATTR __attribute__((optimize("O2")))
 
 #endif

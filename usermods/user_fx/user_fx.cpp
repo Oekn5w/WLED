@@ -3,19 +3,24 @@
 // for information how FX metadata strings work see https://kno.wled.ge/interfaces/json-api/#effect-metadata
 
 // static effect, used if an effect fails to initialize
-static uint16_t mode_static(void) {
+static void mode_static(void) {
   SEGMENT.fill(SEGCOLOR(0));
-  return strip.isOffRefreshRequired() ? FRAMETIME : 350;
 }
+
+#define FX_FALLBACK_STATIC { mode_static(); return; }
+
+// If you define configuration options in your class and need to reference them in your effect function, add them here.
+// If you only need to use them in your class you can define them as class members instead.
+// bool myConfigValue = false;
 
 /////////////////////////
 //  User FX functions  //
 /////////////////////////
 
 // Diffusion Fire: fire effect intended for 2D setups smaller than 16x16
-static uint16_t mode_diffusionfire(void) {
+static void mode_diffusionfire(void) {
   if (!strip.isMatrix || !SEGMENT.is2D())
-    return mode_static();  // not a 2D set-up
+    FX_FALLBACK_STATIC;  // not a 2D set-up
 
   const int cols = SEG_W;
   const int rows = SEG_H;
@@ -27,9 +32,9 @@ static uint16_t mode_diffusionfire(void) {
   const uint8_t spark_rate = SEGMENT.intensity;
   const uint8_t turbulence = SEGMENT.custom2;
 
-  unsigned dataSize = SEGMENT.length(); // allocate persistent data for heat value for each pixel
+unsigned dataSize = cols * rows;  // SEGLEN (virtual length) is equivalent to vWidth()*vHeight() for 2D
   if (!SEGENV.allocateData(dataSize))
-    return mode_static();  // allocation failed
+    FX_FALLBACK_STATIC;  // allocation failed
 
   if (SEGENV.call == 0) {
     SEGMENT.fill(BLACK);
@@ -37,6 +42,7 @@ static uint16_t mode_diffusionfire(void) {
   }
 
   if ((strip.now - SEGENV.step) >= refresh_ms) {
+    // Keep for ≤~1 KiB; otherwise consider heap or reuse SEGENV.data as scratch.
     uint8_t tmp_row[cols];
     SEGENV.step = strip.now;
     // scroll up
@@ -44,7 +50,7 @@ static uint16_t mode_diffusionfire(void) {
       for (unsigned x = 0; x < cols; x++) {
         unsigned src = XY(x, y);
         unsigned dst = XY(x, y - 1);
-        SEGMENT.data[dst] = SEGMENT.data[src];
+        SEGENV.data[dst] = SEGENV.data[src];
       }
 
     if (hw_random8() > turbulence) {
@@ -53,7 +59,7 @@ static uint16_t mode_diffusionfire(void) {
         uint8_t p = hw_random8();
         if (p < spark_rate) {
           unsigned dst = XY(x, rows - 1);
-          SEGMENT.data[dst] = 255;
+          SEGENV.data[dst] = 255;
         }
       }
     }
@@ -61,29 +67,28 @@ static uint16_t mode_diffusionfire(void) {
     // diffuse
     for (unsigned y = 0; y < rows; y++) {
       for (unsigned x = 0; x < cols; x++) {
-        unsigned v = SEGMENT.data[XY(x, y)];
+        unsigned v = SEGENV.data[XY(x, y)];
         if (x > 0) {
-          v += SEGMENT.data[XY(x - 1, y)];
+          v += SEGENV.data[XY(x - 1, y)];
         }
         if (x < (cols - 1)) {
-          v += SEGMENT.data[XY(x + 1, y)];
+          v += SEGENV.data[XY(x + 1, y)];
         }
         tmp_row[x] = min(255, (int)(v * 100 / (300 + diffusion)));
       }
 
       for (unsigned x = 0; x < cols; x++) {
-        SEGMENT.data[XY(x, y)] = tmp_row[x];
+        SEGENV.data[XY(x, y)] = tmp_row[x];
         if (SEGMENT.check1) {
-          uint32_t color = ColorFromPalette(SEGPALETTE, tmp_row[x], 255, LINEARBLEND_NOWRAP);
+          uint32_t color = SEGMENT.color_from_palette(tmp_row[x], true, false, 0);
           SEGMENT.setPixelColorXY(x, y, color);
         } else {
-          uint32_t color = SEGCOLOR(0);
-          SEGMENT.setPixelColorXY(x, y, color_fade(color, tmp_row[x]));
+          uint32_t base = SEGCOLOR(0);
+          SEGMENT.setPixelColorXY(x, y, color_fade(base, tmp_row[x]));
         }
       }
     }
   }
-  return FRAMETIME;
 }
 static const char _data_FX_MODE_DIFFUSIONFIRE[] PROGMEM = "Diffusion Fire@!,Spark rate,Diffusion Speed,Turbulence,,Use palette;;Color;;2;pal=35";
 
@@ -108,6 +113,25 @@ class UserFxUsermod : public Usermod {
     // strip.addEffect(255, &mode_your_effect2, _data_FX_MODE_YOUR_EFFECT2);
     // strip.addEffect(255, &mode_your_effect3, _data_FX_MODE_YOUR_EFFECT3);
   }
+
+  
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+  //  If you want configuration options in the usermod settings page, implement these methods  //
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+
+  // void addToConfig(JsonObject& root) override
+  // {
+  //   JsonObject top = root.createNestedObject(FPSTR("User FX"));
+  //   top["myConfigValue"] = myConfigValue;
+  // }
+  // bool readFromConfig(JsonObject& root) override
+  // {
+  //   JsonObject top = root[FPSTR("User FX")];
+  //   bool configComplete = !top.isNull();
+  //   configComplete &= getJsonValue(top["myConfigValue"], myConfigValue);
+  //   return configComplete;
+  // }
+
   void loop() override {} // nothing to do in the loop
   uint16_t getId() override { return USERMOD_ID_USER_FX; }
 };

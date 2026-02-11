@@ -139,6 +139,12 @@ bool PinManager::allocateMultiplePins(const managed_pin_type * mptArray, byte ar
   return true;
 }
 
+bool PinManager::allocateMultiplePins(const int8_t * mptArray, byte arrayElementCount, PinOwner tag, boolean output) {
+  PinManagerPinType pins[arrayElementCount];
+  for (int i=0; i<arrayElementCount; i++) pins[i] = {mptArray[i], output};
+  return allocateMultiplePins(pins, arrayElementCount, tag);
+}
+
 bool PinManager::allocatePin(byte gpio, bool output, PinOwner tag)
 {
   // HW I2C & SPI pins have to be allocated using allocateMultiplePins variant since there is always SCL/SDA pair
@@ -240,7 +246,14 @@ bool PinManager::isPinOk(byte gpio, bool output)
       // for classic ESP32 (non-mini) modules, these are the SPI flash pins
       if (gpio > 5 && gpio < 12) return false;      //SPI flash pins
     }
-    if (gpio == 16 || gpio == 17) return !psramFound(); // PSRAM pins on ESP32-D0WDR2-V3 (these are IO)
+    if (gpio == 16) return !psramFound(); // PSRAM pins on modules with off-package or in-package PSRAM
+    if (gpio == 17) {
+      if (strncmp_P(PSTR("ESP32-D0WDR2-V3"), ESP.getChipModel(), 15) == 0) {
+        return true;
+      } else {
+        return !psramFound(); // PSRAM pins on modules with in-package PSRAM
+      }
+    }    
   #endif
     if (output) return digitalPinCanOutput(gpio);
     else        return true;
