@@ -308,19 +308,11 @@ void UsermodINA2xx::mqttCreateHassSensor(const String &name, const String &topic
 
 	// Device details nested object
 	JsonObject device = doc.createNestedObject(F("device"));
-	device[F("name")] = serverDescription;
-	device[F("ids")] = serverDescription;
-	device[F("mf")] = F(WLED_BRAND);
-	device[F("mdl")] = F(WLED_PRODUCT_NAME);
-	device[F("sw")] = versionString;
-	#ifdef ESP32
-		device[F("hw")] = F("esp32");
-	#else
-		device[F("hw")] = F("esp8266");
-	#endif
 	JsonArray connections = device[F("cns")].createNestedArray();
 	connections.add(F("mac"));
 	connections.add(WiFi.macAddress());
+	String devName = "WLED-" + escapedMac;
+	device[F("name")] = devName;
 
 	// Serialize the JSON document into a temporary string
 	char buffer[1024];
